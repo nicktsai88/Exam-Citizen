@@ -114,6 +114,9 @@
     .identity-main label { font-weight: 800; }
     .identity-main input { width: min(17rem, 100%); min-height: 2.5rem; border: 1px solid #b9c9c0; border-radius: .65rem; padding: .45rem .7rem; background: white; }
     .sync-status { color: var(--muted); font-size: .92em; }
+    .sync-status.saved { color: #126a4d; font-weight: 760; }
+    .sync-status.error { color: #9d2635; font-weight: 760; }
+    .secondary-button.saved { color: #0b684c; border-color: #72b99f; background: var(--green-soft); }
 
     .dashboard {
       display: grid;
@@ -281,7 +284,7 @@
           <input id="nickname" maxlength="24" autocomplete="nickname" value="訪客" aria-describedby="storageNote">
           <button id="saveNickname" class="secondary-button" type="button">儲存暱稱</button>
         </div>
-        <div id="storageNote" class="sync-status">目前使用本機保存；Firebase 集合：<strong>Exam-Citizen-a-8</strong>。未填入專案設定前不宣稱雲端同步。</div>
+        <div id="storageNote" class="sync-status" role="status" aria-live="polite">目前使用本機保存；Firebase 集合：<strong>Exam-Citizen-a-8</strong>。未填入專案設定前不宣稱雲端同步。</div>
       </div>
       <button id="resetQuiz" class="secondary-button danger" type="button">重新開始全部</button>
     </section>
@@ -354,6 +357,8 @@
       result: document.getElementById('resultCard'),
       live: document.getElementById('liveRegion'),
       nickname: document.getElementById('nickname'),
+      saveNickname: document.getElementById('saveNickname'),
+      storageNote: document.getElementById('storageNote'),
       zoom: document.getElementById('zoomModal'),
       modalImageWrap: document.getElementById('modalImageWrap'),
       zoomTitle: document.getElementById('zoomTitle')
@@ -380,7 +385,38 @@
     }
 
     function saveReading() {
-      localStorage.setItem(readingKey, JSON.stringify({ mode: state.mode, fontPercent: state.fontPercent, nickname: state.nickname }));
+      try {
+        localStorage.setItem(readingKey, JSON.stringify({ mode: state.mode, fontPercent: state.fontPercent, nickname: state.nickname }));
+        return true;
+      } catch (error) {
+        console.warn('無法寫入本機閱讀設定', error);
+        return false;
+      }
+    }
+
+    function persistNickname() {
+      const clean = els.nickname.value.trim().replace(/[<>]/g,'').slice(0,24) || '訪客';
+      state.nickname = clean;
+      els.nickname.value = clean;
+      const saved = saveReading();
+      els.storageNote.classList.toggle('saved', saved);
+      els.storageNote.classList.toggle('error', !saved);
+      if (saved) {
+        els.storageNote.textContent = `✓ 已儲存暱稱「${clean}」在這個瀏覽器。Firebase 集合：${COLLECTION_NAME}；目前未啟用雲端同步。`;
+        els.saveNickname.textContent = '✓ 已儲存';
+        els.saveNickname.classList.add('saved');
+        els.saveNickname.disabled = true;
+        window.setTimeout(() => {
+          els.saveNickname.textContent = '儲存暱稱';
+          els.saveNickname.classList.remove('saved');
+          els.saveNickname.disabled = false;
+        }, 1400);
+        els.live.textContent = `暱稱已儲存為 ${clean}。`;
+      } else {
+        els.storageNote.textContent = '⚠️ 瀏覽器目前禁止本機儲存，暱稱尚未保存。請確認不是無痕模式，或允許此頁使用網站資料後再試一次。';
+        els.saveNickname.textContent = '重試儲存';
+        els.live.textContent = '暱稱儲存失敗。';
+      }
     }
 
     function saveProgress() {
@@ -639,12 +675,19 @@
     document.getElementById('fontDown').addEventListener('click', () => setFont(state.fontPercent - 10));
     document.getElementById('fontReset').addEventListener('click', () => setFont(100));
     document.getElementById('fontUp').addEventListener('click', () => setFont(state.fontPercent + 10));
-    document.getElementById('saveNickname').addEventListener('click', () => {
-      const clean = els.nickname.value.trim().replace(/[<>]/g,'').slice(0,24) || '訪客';
-      state.nickname = clean;
-      els.nickname.value = clean;
-      saveReading();
-      els.live.textContent = `暱稱已儲存為 ${clean}。`;
+    els.saveNickname.addEventListener('click', persistNickname);
+    els.nickname.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        persistNickname();
+      }
+    });
+    els.nickname.addEventListener('input', () => {
+      els.storageNote.classList.remove('saved', 'error');
+      els.storageNote.textContent = '暱稱有尚未儲存的變更。按「儲存暱稱」或 Enter 保存到這個瀏覽器。';
+      els.saveNickname.textContent = '儲存暱稱';
+      els.saveNickname.classList.remove('saved');
+      els.saveNickname.disabled = false;
     });
     document.getElementById('resetQuiz').addEventListener('click', () => {
       if (!confirm('要開始新一輪完整測驗嗎？目前作答會清空，但既有成績紀錄不會刪除。')) return;
